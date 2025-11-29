@@ -1,23 +1,18 @@
-// server.js - Emotion Aware AI Health Coach Backend + Frontend
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const cors = require('cors');
-
+const { spawn } = require('child_process');
 const app = express();
 const PORT = 3001;
 
-// Middleware
 app.use(cors({
     origin: "http://localhost:3001",
     credentials: true
 }));
 app.use(express.json());
-
-// ✅ SERVE ALL FRONTEND FILES from frontend folder
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Initialize SQLite Database
 const db = new sqlite3.Database('./eamhc.db', (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
@@ -27,9 +22,7 @@ const db = new sqlite3.Database('./eamhc.db', (err) => {
   }
 });
 
-// Initialize database tables
 function initializeDatabase() {
-  // Users table
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -41,64 +34,18 @@ function initializeDatabase() {
     profile_data TEXT DEFAULT '{}'
   )`);
 
-  // Sessions table (replaces tickets)
-  db.run(`CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    emotion_score INTEGER NOT NULL CHECK(emotion_score >= 1 AND emotion_score <= 10),
-    emotion_type TEXT NOT NULL CHECK(emotion_type IN ('anxiety', 'depression', 'stress', 'happy', 'calm', 'angry', 'sad', 'excited')),
-    session_type TEXT NOT NULL CHECK(session_type IN ('therapy', 'coaching', 'emergency', 'check-in')),
-    status TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'in-progress', 'completed', 'cancelled')),
-    createdBy TEXT NOT NULL,
-    createdAt TEXT NOT NULL,
-    assignedTo TEXT,
-    session_date TEXT NOT NULL,
-    duration INTEGER DEFAULT 60,
-    session_notes TEXT DEFAULT '',
-    FOREIGN KEY (createdBy) REFERENCES users(email),
-    FOREIGN KEY (assignedTo) REFERENCES users(username)
-  )`);
-
-  // Goals table
-  db.run(`CREATE TABLE IF NOT EXISTS goals (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    category TEXT NOT NULL CHECK(category IN ('mental_health', 'fitness', 'nutrition', 'sleep', 'relationships', 'career')),
-    target_date TEXT NOT NULL,
-    current_status TEXT DEFAULT 'not-started' CHECK(current_status IN ('not-started', 'in-progress', 'completed', 'abandoned')),
-    progress INTEGER DEFAULT 0 CHECK(progress >= 0 AND progress <= 100),
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )`);
-
-  // Mood entries table
-  db.run(`CREATE TABLE IF NOT EXISTS mood_entries (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    mood_score INTEGER NOT NULL CHECK(mood_score >= 1 AND mood_score <= 10),
-    mood_type TEXT NOT NULL CHECK(mood_type IN ('anxiety', 'depression', 'stress', 'happy', 'calm', 'angry', 'sad', 'excited', 'neutral')),
-    notes TEXT,
-    created_at TEXT NOT NULL,
-    factors TEXT DEFAULT '[]',
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )`);
-
-  // Notifications table
-  db.run(`CREATE TABLE IF NOT EXISTS notifications (
+  db.run(`CREATE TABLE IF NOT EXISTS emotionclftable (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    message TEXT NOT NULL,
-    role TEXT,
-    email TEXT,
-    timestamp TEXT NOT NULL,
-    read BOOLEAN DEFAULT FALSE
+    user_id TEXT NOT NULL,
+    rawtext TEXT NOT NULL,
+    prediction TEXT NOT NULL,
+    probability REAL NOT NULL,
+    timeOfvisit DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
 
   console.log('EAMHC Database tables initialized');
 }
-
 
 app.get('/api/test-db', (req, res) => {
   db.all('SELECT * FROM users', (err, users) => {
@@ -112,74 +59,20 @@ app.get('/api/test-db', (req, res) => {
 });
 
 
-
-// ===== FRONTEND ROUTES =====
-// Serve HTML pages with BOTH routes (with and without .html extension)
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/landing.html'));
-});
-
-app.get('/signup', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/signup.html'));
-});
-
-app.get('/signup.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/signup.html'));
-});
-
-app.get('/signin', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/signin.html'));
-});
-
-app.get('/signin.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/signin.html'));
-});
-
-app.get('/user-dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/user-dashboard.html'));
-});
-
-app.get('/user-dashboard.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/user-dashboard.html'));
-});
-
-app.get('/therapist-dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/therapist-dashboard.html'));
-});
-
-app.get('/therapist-dashboard.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/therapist-dashboard.html'));
-});
-
-app.get('/admin-dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/admin-dashboard.html'));
-});
-
-app.get('/admin-dashboard.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/html/admin-dashboard.html'));
-});
-
 // ===== API ENDPOINTS =====
-// User Registration Endpoint
-// User Registration Endpoint - ADD DEBUGGING
 app.post('/api/signup', async (req, res) => {
   console.log("📥 SIGNUP REQUEST RECEIVED:", req.body);
   
   try {
     const { email, username, password, role } = req.body;
-
-    // Validation
     if (!email || !username || !password || !role) {
       console.log("❌ Missing fields");
       return res.status(400).json({ error: 'All fields are required' });
     }
-
     if (!['admin', 'therapist', 'user'].includes(role)) {
       console.log("❌ Invalid role:", role);
       return res.status(400).json({ error: 'Invalid role' });
     }
-
-    // Check if user already exists
     db.get('SELECT email FROM users WHERE email = ?', [email], async (err, row) => {
       if (err) {
         console.log("❌ Database error checking user:", err);
@@ -203,8 +96,6 @@ app.post('/api/signup', async (req, res) => {
       };
 
       console.log("📝 Creating new user:", newUser);
-
-      // Insert user into database
       db.run(
         `INSERT INTO users (id, email, username, password, role, createdAt, needsPasswordReset, profile_data) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -230,8 +121,6 @@ app.post('/api/signup', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// User Login Endpoint
 app.post('/api/signin', (req, res) => {
   try {
     const { username, password } = req.body;
@@ -239,8 +128,6 @@ app.post('/api/signin', (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
-
-    // Find user by username and password
     db.get(
       'SELECT * FROM users WHERE username = ? AND password = ?',
       [username, password],
@@ -252,11 +139,7 @@ app.post('/api/signin', (req, res) => {
         if (!user) {
           return res.status(401).json({ error: 'Invalid credentials' });
         }
-
-        // Check if using default password
         const needsPasswordReset = (password === "HealthCoach@123");
-
-        // Update needsPasswordReset if different from current value
         if (user.needsPasswordReset !== needsPasswordReset) {
           db.run(
             'UPDATE users SET needsPasswordReset = ? WHERE id = ?',
@@ -268,8 +151,6 @@ app.post('/api/signin', (req, res) => {
             }
           );
         }
-
-        // Return user data
         const userResponse = {
           id: user.id,
           email: user.email,
@@ -290,8 +171,6 @@ app.post('/api/signin', (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// Get user by ID
 app.get('/api/user/:id', (req, res) => {
   const userId = req.params.id;
 
@@ -312,741 +191,240 @@ app.get('/api/user/:id', (req, res) => {
   );
 });
 
-// Update user password
-app.put('/api/user/:id/password', (req, res) => {
-  const userId = req.params.id;
-  const { newPassword, isPasswordReset = false } = req.body;
+// Save emotion prediction
+app.post('/api/emotion-prediction', (req, res) => {
+  const { rawtext, prediction, probability, user_id } = req.body;
 
-  if (isPasswordReset) {
-    db.run(
-      'UPDATE users SET password = ?, needsPasswordReset = ? WHERE id = ?',
-      [newPassword, false, userId],
-      function(updateErr) {
-        if (updateErr) {
-          return res.status(500).json({ error: 'Failed to update password' });
-        }
+  if (!rawtext || !prediction || probability === undefined || !user_id) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
 
-        res.json({ message: 'Password updated successfully' });
+  db.run(
+    'INSERT INTO emotionclftable (user_id, rawtext, prediction, probability, timeOfvisit) VALUES (?, ?, ?, ?, ?)',
+    [user_id, rawtext, prediction, probability, new Date().toISOString()],
+    function(err) {
+      if (err) {
+        console.error('Error saving emotion prediction:', err);
+        return res.status(500).json({ error: 'Failed to save prediction' });
       }
-    );
-  } else {
-    const { currentPassword } = req.body;
-    
-    // Verify current password first
-    db.get(
-      'SELECT * FROM users WHERE id = ? AND password = ?',
-      [userId, currentPassword],
-      (err, user) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
+
+      res.json({ 
+        message: 'Emotion prediction saved successfully',
+        id: this.lastID
+      });
+    }
+  );
+});
+
+// Get user's emotion predictions - CHANGED URL
+app.get('/api/emotion/user-predictions', (req, res) => {
+  const { user_id } = req.query;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+
+  db.all(
+    'SELECT * FROM emotionclftable WHERE user_id = ? ORDER BY timeOfvisit DESC',
+    [user_id],
+    (err, predictions) => {
+      if (err) {
+        console.error('Error fetching user emotion predictions:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(predictions);
+    }
+  );
+});
+
+// Get user's emotion statistics - CHANGED URL  
+app.get('/api/emotion/user-stats', (req, res) => {
+  const { user_id } = req.query;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+
+  db.all(`
+    SELECT 
+      prediction,
+      COUNT(*) as count,
+      AVG(probability) as avg_probability
+    FROM emotionclftable 
+    WHERE user_id = ?
+    GROUP BY prediction
+    ORDER BY count DESC
+  `, [user_id], (err, stats) => {
+    if (err) {
+      console.error('Error fetching user emotion stats:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    res.json(stats);
+  });
+});
+// ML Model Prediction Endpoint - DEBUG VERSION
+app.post('/api/predict-emotion', (req, res) => {
+    try {
+        const { text } = req.body;
+
+        if (!text) {
+            return res.status(400).json({ error: 'Text is required' });
         }
 
-        if (!user) {
-          return res.status(401).json({ error: 'Current password is incorrect' });
-        }
+        console.log("🔮 Making ML model prediction for text:", text);
 
-        // Update to new password
-        db.run(
-          'UPDATE users SET password = ?, needsPasswordReset = ? WHERE id = ?',
-          [newPassword, false, userId],
-          function(updateErr) {
-            if (updateErr) {
-              return res.status(500).json({ error: 'Failed to update password' });
+        const { exec } = require('child_process');
+        
+        // Use the exact same command that works manually
+        const command = `cd "D:\\Projects\\Supriya Self Projects\\EAMHC\\backend" && python predict_emotion.py "${text.replace(/"/g, '\\"')}"`;
+        
+        console.log('Executing command:', command);
+        
+        exec(command, (error, stdout, stderr) => {
+            console.log('=== FULL PYTHON OUTPUT ===');
+            console.log('STDOUT:', stdout);
+            console.log('STDERR:', stderr);
+            console.log('ERROR:', error);
+            console.log('=== END PYTHON OUTPUT ===');
+
+            // Try to find JSON in the output
+            let jsonData = null;
+            
+            // Method 1: Look for JSON pattern
+            const jsonMatch = stdout.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                try {
+                    jsonData = JSON.parse(jsonMatch[0]);
+                    console.log("✅ Found and parsed JSON:", jsonData);
+                } catch (e) {
+                    console.log("❌ Failed to parse JSON match:", e.message);
+                }
+            }
+            
+            // Method 2: If no JSON found, try parsing the last line
+            if (!jsonData) {
+                const lines = stdout.split('\n').filter(line => line.trim());
+                const lastLine = lines[lines.length - 1];
+                try {
+                    jsonData = JSON.parse(lastLine);
+                    console.log("✅ Parsed last line as JSON:", jsonData);
+                } catch (e) {
+                    console.log("❌ Last line is not JSON:", lastLine);
+                }
             }
 
-            res.json({ message: 'Password updated successfully' });
-          }
-        );
-      }
-    );
-  }
+            if (jsonData && jsonData.prediction) {
+                console.log("✅ ML Model prediction successful:", jsonData);
+                
+                // Convert to the format expected by frontend
+                const maxProbability = Math.max(...Object.values(jsonData.probability));
+                res.json({
+                    prediction: jsonData.prediction,
+                    probability: jsonData.probability,
+                    maxProbability: maxProbability
+                });
+            } else {
+                console.error('❌ No valid prediction data found');
+                res.status(500).json({ 
+                    error: 'ML model prediction failed - no valid output',
+                    rawStdout: stdout,
+                    rawStderr: stderr,
+                    parsedData: jsonData
+                });
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Prediction endpoint error:', error);
+        res.status(500).json({ 
+            error: 'Prediction failed',
+            details: error.message
+        });
+    }
 });
 
-// ===== ADMIN ENDPOINTS =====
 
-// Get all sessions with filtering
-app.get('/api/sessions', (req, res) => {
-  const { searchField, searchValue } = req.query;
-  
-  let query = `
-    SELECT s.*, u1.username as createdByName, u2.username as assignedToName 
-    FROM sessions s 
-    LEFT JOIN users u1 ON s.createdBy = u1.email 
-    LEFT JOIN users u2 ON s.assignedTo = u2.username
-  `;
-  let params = [];
-
-  if (searchField && searchValue) {
-    query += ` WHERE s.${searchField} LIKE ?`;
-    params.push(`%${searchValue}%`);
-  }
-
-  query += ' ORDER BY s.session_date DESC';
-
-  db.all(query, params, (err, sessions) => {
-    if (err) {
-      console.error('Error fetching sessions:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(sessions);
-  });
+// ===== FRONTEND ROUTES =====
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/html/landing.html'));
 });
 
-// Get session statistics
-app.get('/api/sessions/stats', (req, res) => {
-  db.all(`
-    SELECT 
-      COUNT(*) as total,
-      SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
-      SUM(CASE WHEN status = 'in-progress' THEN 1 ELSE 0 END) as inProgress,
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-      SUM(CASE WHEN emotion_type IN ('anxiety', 'depression', 'stress') THEN 1 ELSE 0 END) as negativeEmotions,
-      SUM(CASE WHEN emotion_type IN ('happy', 'calm', 'excited') THEN 1 ELSE 0 END) as positiveEmotions
-    FROM sessions
-  `, (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(result[0]);
-  });
+app.get('/signup', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/html/signup.html'));
 });
 
-// Get all users
-app.get('/api/users', (req, res) => {
-  db.all('SELECT id, email, username, role, createdAt, needsPasswordReset, profile_data FROM users ORDER BY role', (err, users) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(users);
-  });
+app.get('/signup.html', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/html/signup.html'));
 });
 
-// Create new user
-app.post('/api/users', (req, res) => {
-  const { username, email, role } = req.body;
+app.get('/signin', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/html/signin.html'));
+});
 
-  if (!username || !email || !role) {
-    return res.status(400).json({ error: 'All fields are required' });
-  }
+app.get('/signin.html', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/html/signin.html'));
+});
 
-  // Check if user already exists
-    db.get('SELECT * FROM users WHERE email = ? OR username = ?', [email, username], (err, existingUser) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
+app.get('/emotion-detection', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/html/emotion-detection.html'));
+});
+
+app.get('/emotion-detection.html', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/html/emotion-detection.html'));
+});
+
+
+// Fallback simulation function (only used if Python model fails)
+function simulatePrediction(text) {
+    const emotions = ["anger", "disgust", "fear", "happy", "joy", "neutral", "sad", "sadness", "shame", "surprise"];
+    
+    // Smart simulation based on text content
+    let prediction = "neutral";
+    let maxProbability = 0.7;
+    
+    const textLower = text.toLowerCase();
+    
+    // Analyze text content to determine emotion
+    if (textLower.includes('irritating') || textLower.includes('messed up') || textLower.includes('angry') || textLower.includes('mad') || textLower.includes('annoying')) {
+        prediction = "anger";
+        maxProbability = 0.85;
+    } else if (textLower.includes('sad') || textLower.includes('upset') || textLower.includes('unhappy') || textLower.includes('depressed')) {
+        prediction = "sadness";
+        maxProbability = 0.82;
+    } else if (textLower.includes('happy') || textLower.includes('joy') || textLower.includes('excited') || textLower.includes('great') || textLower.includes('good')) {
+        prediction = "joy";
+        maxProbability = 0.89;
+    } else if (textLower.includes('scared') || textLower.includes('fear') || textLower.includes('afraid') || textLower.includes('worried')) {
+        prediction = "fear";
+        maxProbability = 0.78;
+    } else if (textLower.includes('disgust') || textLower.includes('gross') || textLower.includes('nasty')) {
+        prediction = "disgust";
+        maxProbability = 0.75;
+    } else if (textLower.includes('surprised') || textLower.includes('wow') || textLower.includes('amazing')) {
+        prediction = "surprise";
+        maxProbability = 0.80;
     }
+    
+    // Create probability distribution
+    const probability = {};
+    emotions.forEach(emotion => {
+        probability[emotion] = emotion === prediction ? maxProbability : (1 - maxProbability) / (emotions.length - 1);
+    });
 
-    if (existingUser) {
-      return res.status(400).json({ error: 'Username or email already exists' });
-    }
-
-    const newUser = {
-      id: 'user_' + Date.now(),
-      email,
-      username,
-      password: 'HealthCoach@123',
-      role,
-      createdAt: new Date().toISOString(),
-      needsPasswordReset: true,
-      profile_data: '{}'
+    console.log("🔄 Using simulation for:", text, "->", prediction);
+    
+    return {
+        prediction: prediction,
+        probability: probability,
+        maxProbability: maxProbability
     };
+}
 
-    db.run(
-      'INSERT INTO users (id, email, username, password, role, createdAt, needsPasswordReset, profile_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [newUser.id, newUser.email, newUser.username, newUser.password, newUser.role, newUser.createdAt, newUser.needsPasswordReset, newUser.profile_data],
-      function(err) {
-        if (err) {
-          return res.status(500).json({ error: 'Failed to create user' });
-        }
-        res.json({ message: 'User created successfully', user: newUser });
-      }
-    );
-  });
-});
 
-// Get all therapists
-app.get('/api/therapists', (req, res) => {
-  db.all('SELECT id, email, username, role, createdAt, profile_data FROM users WHERE role = "therapist" ORDER BY username', (err, therapists) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(therapists);
-  });
-});
-
-// Assign therapist to session
-app.put('/api/sessions/:id/assign', (req, res) => {
-  const sessionId = req.params.id;
-  const { therapistUsername, adminEmail } = req.body;
-
-  db.run(
-    'UPDATE sessions SET assignedTo = ?, status = ? WHERE id = ?',
-    [therapistUsername, therapistUsername ? 'scheduled' : 'scheduled', sessionId],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to assign therapist' });
-      }
-
-      // Get session details for notification
-      db.get('SELECT * FROM sessions WHERE id = ?', [sessionId], (err, session) => {
-        if (session) {
-          const timestamp = new Date().toLocaleString();
-          
-          // Notification for user
-          if (session.createdBy) {
-            db.run(
-              'INSERT INTO notifications (message, role, email, timestamp, read) VALUES (?, ?, ?, ?, ?)',
-              [`Your session #${sessionId} has been assigned to therapist ${therapistUsername}.`, 'user', session.createdBy, timestamp, false]
-            );
-          }
-
-          // Notification for therapist
-          if (therapistUsername) {
-            db.get('SELECT email FROM users WHERE username = ?', [therapistUsername], (err, therapist) => {
-              if (therapist) {
-                db.run(
-                  'INSERT INTO notifications (message, role, email, timestamp, read) VALUES (?, ?, ?, ?, ?)',
-                  [`You have been assigned to session #${sessionId} (${session.title}).`, 'therapist', therapist.email, timestamp, false]
-                );
-              }
-            });
-          }
-
-          // Notification for admin
-          db.run(
-            'INSERT INTO notifications (message, role, timestamp, read) VALUES (?, ?, ?, ?)',
-            [`Session #${sessionId} assigned to therapist ${therapistUsername}.`, 'admin', timestamp, false]
-          );
-        }
-
-        res.json({ message: 'Therapist assigned successfully' });
-      });
-    }
-  );
-});
-
-// Delete user
-app.delete('/api/users/:id', (req, res) => {
-  const userId = req.params.id;
-
-  db.run('DELETE FROM users WHERE id = ?', [userId], function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to delete user' });
-    }
-    res.json({ message: 'User deleted successfully' });
-  });
-});
-
-// ===== THERAPIST ENDPOINTS =====
-
-// Get therapist's assigned sessions
-app.get('/api/therapist/sessions', (req, res) => {
-  const { therapistUsername, status, search } = req.query;
-  
-  let query = `
-    SELECT s.*, u.username as createdByName
-    FROM sessions s 
-    LEFT JOIN users u ON s.createdBy = u.email 
-    WHERE s.assignedTo = ?
-  `;
-  let params = [therapistUsername];
-
-  if (status && status !== 'all') {
-    query += ' AND s.status = ?';
-    params.push(status);
-  }
-
-  if (search) {
-    query += ` AND (
-      s.title LIKE ? OR 
-      s.emotion_type LIKE ? OR 
-      s.id LIKE ? OR
-      s.description LIKE ?
-    )`;
-    const searchParam = `%${search}%`;
-    params.push(searchParam, searchParam, searchParam, searchParam);
-  }
-
-  query += ' ORDER BY s.session_date DESC';
-
-  db.all(query, params, (err, sessions) => {
-    if (err) {
-      console.error('Error fetching therapist sessions:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(sessions);
-  });
-});
-
-// Get therapist statistics
-app.get('/api/therapist/stats', (req, res) => {
-  const { therapistUsername } = req.query;
-
-  db.all(`
-    SELECT 
-      COUNT(*) as total,
-      SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
-      SUM(CASE WHEN status = 'in-progress' THEN 1 ELSE 0 END) as inProgress,
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-      AVG(emotion_score) as avgEmotionScore
-    FROM sessions 
-    WHERE assignedTo = ?
-  `, [therapistUsername], (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(result[0]);
-  });
-});
-
-// Update session status
-app.put('/api/sessions/:id/status', (req, res) => {
-  const sessionId = req.params.id;
-  const { status, therapistUsername } = req.body;
-
-  db.run(
-    'UPDATE sessions SET status = ? WHERE id = ? AND assignedTo = ?',
-    [status, sessionId, therapistUsername],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to update session status' });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Session not found or not assigned to you' });
-      }
-
-      // Get session details for notification
-      db.get('SELECT * FROM sessions WHERE id = ?', [sessionId], (err, session) => {
-        if (session) {
-          const timestamp = new Date().toLocaleString();
-          
-          // Notification for user
-          if (session.createdBy) {
-            db.run(
-              'INSERT INTO notifications (message, role, email, timestamp, read) VALUES (?, ?, ?, ?, ?)',
-              [`Status of your session #${sessionId} has been changed to "${status}".`, 'user', session.createdBy, timestamp, false]
-            );
-          }
-
-          // Notification for admin
-          db.run(
-            'INSERT INTO notifications (message, role, timestamp, read) VALUES (?, ?, ?, ?)',
-            [`Session #${sessionId} status changed to "${status}" by ${therapistUsername}.`, 'admin', timestamp, false]
-          );
-        }
-
-        res.json({ message: 'Session status updated successfully' });
-      });
-    }
-  );
-});
-
-// Add session notes
-app.put('/api/sessions/:id/notes', (req, res) => {
-  const sessionId = req.params.id;
-  const { session_notes, therapistUsername } = req.body;
-
-  db.run(
-    'UPDATE sessions SET session_notes = ? WHERE id = ? AND assignedTo = ?',
-    [session_notes, sessionId, therapistUsername],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to update session notes' });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Session not found or not assigned to you' });
-      }
-
-      res.json({ message: 'Session notes updated successfully' });
-    }
-  );
-});
-
-// Get therapist's assigned clients
-app.get('/api/therapist/clients', (req, res) => {
-  const { therapistUsername } = req.query;
-
-  const query = `
-    SELECT DISTINCT u.id, u.username, u.email, u.profile_data
-    FROM users u
-    JOIN sessions s ON u.email = s.createdBy
-    WHERE s.assignedTo = ?
-    ORDER BY u.username
-  `;
-
-  db.all(query, [therapistUsername], (err, clients) => {
-    if (err) {
-      console.error('Error fetching therapist clients:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(clients);
-  });
-});
-
-// ===== USER ENDPOINTS =====
-
-// Create new session
-app.post('/api/sessions', (req, res) => {
-  const { 
-    title, 
-    description, 
-    emotion_score, 
-    emotion_type, 
-    session_type, 
-    createdBy,
-    session_date,
-    duration
-  } = req.body;
-
-  // Validate required fields
-  if (!title || !description || !emotion_score || !emotion_type || !session_type || !createdBy || !session_date) {
-    return res.status(400).json({ error: 'All fields are required' });
-  }
-
-  const newSession = {
-    id: "SESS-" + Date.now(),
-    title,
-    description,
-    emotion_score: parseInt(emotion_score),
-    emotion_type,
-    session_type,
-    status: "scheduled",
-    createdBy,
-    createdAt: new Date().toLocaleString(),
-    assignedTo: null,
-    session_date,
-    duration: duration || 60,
-    session_notes: ''
-  };
-
-  // Insert session into database
-  db.run(
-    `INSERT INTO sessions (id, title, description, emotion_score, emotion_type, session_type, status, createdBy, createdAt, assignedTo, session_date, duration, session_notes) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      newSession.id, 
-      newSession.title, 
-      newSession.description, 
-      newSession.emotion_score, 
-      newSession.emotion_type, 
-      newSession.session_type, 
-      newSession.status, 
-      newSession.createdBy, 
-      newSession.createdAt, 
-      newSession.assignedTo,
-      newSession.session_date,
-      newSession.duration,
-      newSession.session_notes
-    ],
-    function(err) {
-      if (err) {
-        console.error('Error creating session:', err);
-        return res.status(500).json({ error: 'Failed to create session' });
-      }
-
-      const timestamp = new Date().toLocaleString();
-      
-      // Notification for admin
-      db.run(
-        'INSERT INTO notifications (message, role, timestamp, read) VALUES (?, ?, ?, ?)',
-        [`New session request from ${createdBy}: #${newSession.id}`, 'admin', timestamp, false]
-      );
-
-      // Notification for user
-      db.run(
-        'INSERT INTO notifications (message, role, email, timestamp, read) VALUES (?, ?, ?, ?, ?)',
-        [`Your session #${newSession.id} has been created successfully. A therapist will be assigned soon.`, 'user', createdBy, timestamp, false]
-      );
-
-      res.json({ 
-        message: 'Session created successfully!',
-        session: newSession
-      });
-    }
-  );
-});
-
-// Get user's sessions
-app.get('/api/user/sessions', (req, res) => {
-  const { userEmail } = req.query;
-  
-  const query = `
-    SELECT s.*, u.username as assignedToName
-    FROM sessions s 
-    LEFT JOIN users u ON s.assignedTo = u.username
-    WHERE s.createdBy = ?
-    ORDER BY s.session_date DESC
-  `;
-
-  db.all(query, [userEmail], (err, sessions) => {
-    if (err) {
-      console.error('Error fetching user sessions:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(sessions);
-  });
-});
-
-// Get user statistics
-app.get('/api/user/stats', (req, res) => {
-  const { userEmail } = req.query;
-
-  db.all(`
-    SELECT 
-      COUNT(*) as totalSessions,
-      SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
-      SUM(CASE WHEN status = 'in-progress' THEN 1 ELSE 0 END) as inProgress,
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-      AVG(emotion_score) as avgEmotionScore
-    FROM sessions 
-    WHERE createdBy = ?
-  `, [userEmail], (err, result) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(result[0]);
-  });
-});
-
-// Add mood entry
-app.post('/api/mood-entries', (req, res) => {
-  const { 
-    user_id, 
-    mood_score, 
-    mood_type, 
-    notes,
-    factors
-  } = req.body;
-
-  if (!user_id || !mood_score || !mood_type) {
-    return res.status(400).json({ error: 'User ID, mood score, and mood type are required' });
-  }
-
-  const newMoodEntry = {
-    id: "MOOD-" + Date.now(),
-    user_id,
-    mood_score: parseInt(mood_score),
-    mood_type,
-    notes: notes || '',
-    created_at: new Date().toLocaleString(),
-    factors: factors ? JSON.stringify(factors) : '[]'
-  };
-
-  db.run(
-    `INSERT INTO mood_entries (id, user_id, mood_score, mood_type, notes, created_at, factors) 
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      newMoodEntry.id, 
-      newMoodEntry.user_id, 
-      newMoodEntry.mood_score, 
-      newMoodEntry.mood_type, 
-      newMoodEntry.notes, 
-      newMoodEntry.created_at,
-      newMoodEntry.factors
-    ],
-    function(err) {
-      if (err) {
-        console.error('Error creating mood entry:', err);
-        return res.status(500).json({ error: 'Failed to create mood entry' });
-      }
-
-      res.json({ 
-        message: 'Mood entry created successfully!',
-        moodEntry: newMoodEntry
-      });
-    }
-  );
-});
-
-// Get user's mood history
-app.get('/api/user/mood-entries', (req, res) => {
-  const { user_id, limit = 30 } = req.query;
-  
-  const query = `
-    SELECT * FROM mood_entries 
-    WHERE user_id = ? 
-    ORDER BY created_at DESC 
-    LIMIT ?
-  `;
-
-  db.all(query, [user_id, parseInt(limit)], (err, moodEntries) => {
-    if (err) {
-      console.error('Error fetching mood entries:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(moodEntries);
-  });
-});
-
-// Create health goal
-app.post('/api/goals', (req, res) => {
-  const { 
-    user_id, 
-    title, 
-    description, 
-    category, 
-    target_date 
-  } = req.body;
-
-  if (!user_id || !title || !description || !category || !target_date) {
-    return res.status(400).json({ error: 'All fields are required' });
-  }
-
-  const newGoal = {
-    id: "GOAL-" + Date.now(),
-    user_id,
-    title,
-    description,
-    category,
-    target_date,
-    current_status: 'not-started',
-    progress: 0,
-    created_at: new Date().toLocaleString()
-  };
-
-  db.run(
-    `INSERT INTO goals (id, user_id, title, description, category, target_date, current_status, progress, created_at) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      newGoal.id, 
-      newGoal.user_id, 
-      newGoal.title, 
-      newGoal.description, 
-      newGoal.category, 
-      newGoal.target_date,
-      newGoal.current_status,
-      newGoal.progress,
-      newGoal.created_at
-    ],
-    function(err) {
-      if (err) {
-        console.error('Error creating goal:', err);
-        return res.status(500).json({ error: 'Failed to create goal' });
-      }
-
-      res.json({ 
-        message: 'Goal created successfully!',
-        goal: newGoal
-      });
-    }
-  );
-});
-
-// Get user's goals
-app.get('/api/user/goals', (req, res) => {
-  const { user_id } = req.query;
-  
-  const query = `
-    SELECT * FROM goals 
-    WHERE user_id = ? 
-    ORDER BY created_at DESC
-  `;
-
-  db.all(query, [user_id], (err, goals) => {
-    if (err) {
-      console.error('Error fetching goals:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(goals);
-  });
-});
-
-// Update goal progress
-app.put('/api/goals/:id/progress', (req, res) => {
-  const goalId = req.params.id;
-  const { progress, current_status } = req.body;
-
-  let updateFields = [];
-  let params = [];
-
-  if (progress !== undefined) {
-    updateFields.push('progress = ?');
-    params.push(progress);
-  }
-
-  if (current_status) {
-    updateFields.push('current_status = ?');
-    params.push(current_status);
-  }
-
-  if (updateFields.length === 0) {
-    return res.status(400).json({ error: 'No fields to update' });
-  }
-
-  params.push(goalId);
-
-  db.run(
-    `UPDATE goals SET ${updateFields.join(', ')} WHERE id = ?`,
-    params,
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to update goal progress' });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Goal not found' });
-      }
-
-      res.json({ message: 'Goal progress updated successfully' });
-    }
-  );
-});
-
-// ===== NOTIFICATION ENDPOINTS =====
-
-// Get notifications for user
-app.get('/api/notifications', (req, res) => {
-  const { email, role } = req.query;
-
-  let query = 'SELECT * FROM notifications WHERE read = 0 AND (email = ? OR role = ?) ORDER BY timestamp DESC';
-  
-  db.all(query, [email, role], (err, notifications) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(notifications);
-  });
-});
-
-// Mark notification as read
-app.put('/api/notifications/:id/read', (req, res) => {
-  const notificationId = req.params.id;
-
-  db.run('UPDATE notifications SET read = 1 WHERE id = ?', [notificationId], function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to mark notification as read' });
-    }
-    res.json({ message: 'Notification marked as read' });
-  });
-});
-
-// Mark all notifications as read for user
-app.put('/api/notifications/read-all', (req, res) => {
-  const { email, role } = req.body;
-
-  db.run(
-    'UPDATE notifications SET read = 1 WHERE (email = ? OR role = ?) AND read = 0',
-    [email, role],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to mark notifications as read' });
-      }
-      res.json({ message: 'All notifications marked as read' });
-    }
-  );
-});
-
-
-// ✅ SERVE ALL FRONTEND FILES from frontend folder
 app.use(express.static(path.join(__dirname, '../frontend')));
-
-// ✅ ADD SPECIFIC ROUTES FOR BETTER FILE SERVING
 app.use('/styles', express.static(path.join(__dirname, '../frontend/styles')));
 app.use('/scripts', express.static(path.join(__dirname, '../frontend/scripts')));
 app.use('/assets', express.static(path.join(__dirname, '../frontend/assets')));
-
-// Start server
 app.listen(PORT, () => {
   console.log(`🚀 EAMHC Full Stack Application running on http://localhost:${PORT}`);
   console.log(`📁 Frontend served from: ${path.join(__dirname, '../frontend')}`);

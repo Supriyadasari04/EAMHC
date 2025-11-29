@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Classifier App</title>
+    <link rel="stylesheet" href="../styles/emotion-detection.css">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-content">
+                <h2>Emotion Classifier App</h2>
+                <div class="nav-menu">
+                    <div class="nav-item active" data-page="home">Home</div>
+                    <div class="nav-item" data-page="monitor">Monitor</div>
+                    <div class="nav-item" data-page="about">About</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Home Page -->
+            <div id="home-page" class="page active">
+                <div class="page-header">
+                    <h1>Emotion Detection in Text</h1>
+                </div>
+
+                <!-- Input Form -->
+                <div class="input-section">
+                    <form id="emotionForm" class="emotion-form">
+                        <div class="form-group">
+                            <label for="rawText">Type Here</label>
+                            <textarea 
+                                id="rawText" 
+                                name="rawText" 
+                                rows="6" 
+                                placeholder="I am so happy"
+                                required
+                            ></textarea>
+                        </div>
+                        <button type="submit" class="submit-btn">Submit</button>
+                    </form>
+                </div>
+
+                <!-- Results Section -->
+                <div id="resultsSection" class="results-section" style="display: none;">
+                    <div class="results-container">
+                        <!-- Left Column -->
+                        <div class="result-column">
+                            <div class="result-card">
+                                <h3>Original Text</h3>
+                                <div id="originalText" class="text-display"></div>
+                            </div>
+                            
+                            <div class="result-card">
+                                <h3>Prediction</h3>
+                                <div id="predictionDisplay" class="prediction-display">
+                                    <span id="predictionText" class="prediction-text"></span>
+                                    <span id="predictionEmoji" class="prediction-emoji"></span>
+                                </div>
+                                <div id="confidenceScore" class="confidence-score"></div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column -->
+                        <div class="result-column">
+                            <div class="result-card">
+                                <h3>Prediction Probability</h3>
+                                <div id="probabilityChart" class="probability-chart"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monitor Page -->
+            <div id="monitor-page" class="page">
+                <div class="page-header">
+                    <h1>Monitor App</h1>
+                </div>
+                
+                <!-- Emotion Classifier Metrics -->
+                <div class="monitor-section">
+                    <div class="section-header">
+                        <h2>Emotion Classifier Metrics</h2>
+                        <div class="search-box">
+                            <input type="text" id="searchInput" placeholder="Search...">
+                            <button id="searchBtn">Search</button>
+                        </div>
+                    </div>
+
+                    <!-- Statistics Cards -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Total Predictions</h3>
+                            <div id="totalPredictions" class="stat-value">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Most Common Emotion</h3>
+                            <div id="mostCommonEmotion" class="stat-value">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Average Confidence</h3>
+                            <div id="avgConfidence" class="stat-value">0%</div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Emotion Distribution</h3>
+                            <div id="emotionDistributionChart" class="chart-container"></div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Confidence Distribution</h3>
+                            <div id="confidenceDistributionChart" class="chart-container"></div>
+                        </div>
+                    </div>
+
+                    <!-- Data Table -->
+                    <div class="data-section">
+                        <h3>Emotion Prediction History</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Raw Text</th>
+                                        <th>Prediction</th>
+                                        <th>Probability</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="predictionsTableBody">
+                                    <!-- Data will be populated by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- About Page -->
+            <div id="about-page" class="page">
+                <div class="page-header">
+                    <h1>About</h1>
+                </div>
+                <div class="about-content">
+                    <p>Welcome to the Emotion Detection in Text App! This application utilizes the power of natural language processing and machine learning to analyze and identify emotions in textual data.</p>
+                    
+                    <h3>Our Mission</h3>
+                    <p>At Emotion Detection in Text, our mission is to provide a user-friendly and efficient tool that helps individuals and organizations understand the emotional content hidden within text.</p>
+                    
+                    <h3>How It Works</h3>
+                    <p>When you input text into the app, our system processes it and applies advanced natural language processing algorithms to extract meaningful features from the text.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../scripts/emotion-detection.js"></script>
+</body>
+</html>

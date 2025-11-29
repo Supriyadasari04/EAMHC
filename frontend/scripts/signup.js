@@ -1,4 +1,3 @@
-// scripts/signup.js - Emotion Aware AI Health Coach
 let isSubmitting = false;
 
 function resetButton() {
@@ -10,18 +9,9 @@ function resetButton() {
     }
 }
 
-function redirectToRole(role) {
-    console.log("Executing redirect for role:", role);
-    
-    if (role === "admin") {
-        window.location.href = "/admin-dashboard";
-    } else if (role === "user") {
-        window.location.href = "/user-dashboard";
-    } else if (role === "therapist") {
-        window.location.href = "/therapist-dashboard";
-    } else {
-        window.location.href = "/signin";
-    }
+function redirectToEmotionDetection() {
+    console.log("🔄 Redirecting to emotion-detection.html");
+    window.location.href = '/emotion-detection.html';
 }
 
 async function handleSignUp(event) {
@@ -32,8 +22,6 @@ async function handleSignUp(event) {
         event.stopPropagation();
         console.log("✅ Event prevented");
     }
-
-    // Prevent double submission
     if (isSubmitting) {
         console.log("🚫 Already submitting, blocking...");
         return false;
@@ -53,11 +41,10 @@ async function handleSignUp(event) {
     const username = document.getElementById("signup-username").value.trim();
     const password = document.getElementById("signup-password").value.trim();
     const confirm = document.getElementById("signup-confirm-password").value.trim();
-    const role = document.getElementById("signup-role").value;
 
-    console.log("📝 Form values:", { email, username, role, passwordLength: password.length });
+    console.log("📝 Form values:", { email, username, passwordLength: password.length });
 
-    if (!email || !username || !password || !confirm || !role) {
+    if (!email || !username || !password || !confirm) {
         alert("❌ All fields are required");
         resetButton();
         return false;
@@ -76,7 +63,7 @@ async function handleSignUp(event) {
             email,
             username,
             password,
-            role
+            role: "user" 
         };
         
         console.log("📤 Request body:", requestBody);
@@ -103,10 +90,8 @@ async function handleSignUp(event) {
         console.log("💾 Storing user in localStorage:", data.user);
         
         localStorage.setItem("currentUser", JSON.stringify(data.user));
-
-        // Redirect immediately without alert
-        console.log("🔄 Redirecting immediately to:", role);
-        redirectToRole(role);
+        console.log("🔄 Redirecting to emotion detection page");
+        redirectToEmotionDetection();
         
     } catch (error) {
         console.error('❌ Signup error:', error);
@@ -116,8 +101,6 @@ async function handleSignUp(event) {
     
     return false;
 }
-
-// Add event listener for form submission
 document.addEventListener('DOMContentLoaded', function() {
     console.log("✅ DOM loaded, setting up event listeners");
     
