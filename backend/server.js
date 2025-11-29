@@ -8,7 +8,10 @@ const app = express();
 const PORT = 3001;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: "http://localhost:3001",
+    credentials: true
+}));
 app.use(express.json());
 
 // ✅ SERVE ALL FRONTEND FILES from frontend folder
@@ -1033,6 +1036,15 @@ app.put('/api/notifications/read-all', (req, res) => {
     }
   );
 });
+
+
+// ✅ SERVE ALL FRONTEND FILES from frontend folder
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+// ✅ ADD SPECIFIC ROUTES FOR BETTER FILE SERVING
+app.use('/styles', express.static(path.join(__dirname, '../frontend/styles')));
+app.use('/scripts', express.static(path.join(__dirname, '../frontend/scripts')));
+app.use('/assets', express.static(path.join(__dirname, '../frontend/assets')));
 
 // Start server
 app.listen(PORT, () => {
