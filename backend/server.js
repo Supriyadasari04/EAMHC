@@ -34,16 +34,6 @@ function initializeDatabase() {
     profile_data TEXT DEFAULT '{}'
   )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS emotionclftable (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    rawtext TEXT NOT NULL,
-    prediction TEXT NOT NULL,
-    probability REAL NOT NULL,
-    timeOfvisit DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )`);
-
   console.log('EAMHC Database tables initialized');
 }
 
